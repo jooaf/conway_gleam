@@ -25,6 +25,13 @@ pub type Universe {
   Universe(board: Dict(Int, Cell), width: Int)
 }
 
+pub type Coordinate =
+  #(Int, Int)
+
+pub type PotentialNeighborPoint {
+  PotentialNeighborPoint(dx: Int, dy: Int, nx: Int, ny: Int)
+}
+
 fn get_board(u: Universe) -> Dict(Int, Cell) {
   u.board
 }
@@ -110,9 +117,9 @@ pub fn get_life_state_from_cell(cell: Cell) -> Life {
 }
 
 fn remove_invalid_neighbors(
-  neighbors: List(Int),
-  pos: Int,
-  max_size: Int,
+  n neighbors: List(Int),
+  p pos: Int,
+  max max_size: Int,
 ) -> List(Int) {
   // filter any negatives or values that exceed the universe boundary
   list.filter(neighbors, fn(cell_pos) {
@@ -120,51 +127,87 @@ fn remove_invalid_neighbors(
   })
 }
 
-fn top_row_neighbors(pos: Int, max_size: Int) -> List(Int) {
-  let assert Ok(width) = int.square_root(max_size)
-  let width = float.truncate(width)
-
-  let potential_neighbors = [
-    { pos - width },
-    { pos - width + 1 },
-    { pos - width - 1 },
-  ]
-
-  remove_invalid_neighbors(potential_neighbors, pos, max_size)
+pub fn build_product_fn(other: List(Int), x: Int) -> List(#(Int, Int)) {
+  case other {
+    [] -> []
+    [o, ..rest] -> [#(x, o), ..build_product_fn(rest, x)]
+  }
 }
 
-fn bottom_row_neighbors(pos: Int, max_size: Int) -> List(Int) {
-  let assert Ok(width) = int.square_root(max_size)
-  let width = float.truncate(width)
-
-  let potential_neighbors = [
-    { pos + width },
-    { pos + width + 1 },
-    { pos + width - 1 },
-  ]
-
-  remove_invalid_neighbors(potential_neighbors, pos, max_size)
+fn filter_invalid_more_neighboorhood(
+  width: Int,
+  potential: PotentialNeighborPoint,
+) -> Bool {
+  case potential {
+    PotentialNeighborPoint(dx, dy, nx, ny)
+      if { dx != 0 || dy != 0 }
+      && 0 <= nx
+      && nx <= width
+      && 0 <= ny
+      && ny <= width
+    -> True
+    _ -> False
+  }
 }
 
-fn row_neighbors(pos: Int, max_size: Int) -> List(Int) {
-  let potential_neighbors = [{ pos + 1 }, { pos - 1 }]
-
-  remove_invalid_neighbors(potential_neighbors, pos, max_size)
+fn nx_ny_creation(x: Int, y: Int, pos: List(Coordinate)) -> List(Coordinate) {
+  case pos {
+    [] -> []
+    [p, ..rest] -> [#(x + p.0, y + p.1), ..nx_ny_creation(x, y, rest)]
+  }
 }
 
-pub fn create_neighbors(pos: Int, max_size: Int) -> List(Int) {
-  let combined_list =
-    list.concat([
-      row_neighbors(pos, max_size),
-      top_row_neighbors(pos, max_size),
-      bottom_row_neighbors(pos, max_size),
-    ])
-
-  let set_list = set.from_list(combined_list)
-  set.to_list(set_list)
+fn create_potential_points_rec(
+  zip_coor_list: List(#(Coordinate, Coordinate)),
+) -> List(PotentialNeighborPoint) {
+  case zip_coor_list {
+    [] -> []
+    [#(d, n), ..rest] -> [
+      PotentialNeighborPoint(d.0, d.1, n.0, n.1),
+      ..create_potential_points_rec(rest)
+    ]
+  }
 }
 
-pub fn new_cell(max_size: Int, pos: Int) -> Cell {
+fn create_potential_points(
+  derivations: List(Coordinate),
+  n: List(Coordinate),
+) -> List(PotentialNeighborPoint) {
+  let assert True = list.length(derivations) == list.length(n)
+
+  let zip_coor_list = list.zip(derivations, n)
+  create_potential_points_rec(zip_coor_list)
+}
+
+fn moore_neighborhood(x: Int, y: Int, width: Int) -> List(Int) {
+  let n_pos = [-1, 0, 1]
+  let cross_n = function.curry2(build_product_fn)(n_pos)
+
+  let n_pos_cross =
+    n_pos
+    |> list.map(fn(x) { cross_n(x) })
+    |> list.flatten
+
+  let nx_ny_list = nx_ny_creation(x, y, n_pos_cross)
+  let pot = create_potential_points(n_pos_cross, nx_ny_list)
+  let filter_points = function.curry2(filter_invalid_more_neighboorhood)(width)
+  pot
+  |> list.filter(filter_points)
+  |> list.map(fn(p) { p.ny * width + p.nx })
+  // let 
+
+  // todo
+}
+
+pub fn create_neighbors(pos: Int, width: Int) -> List(Int) {
+  let x = pos % width
+  let y = pos / width
+  let final_list = moore_neighborhood(x, y, width)
+
+  remove_invalid_neighbors(n: final_list, p: pos, max: width * width)
+}
+
+pub fn new_cell(width: Int, pos: Int) -> Cell {
   let life_state =
     random.int(0, 1)
     |> random.map(fn(a) {
@@ -175,14 +218,14 @@ pub fn new_cell(max_size: Int, pos: Int) -> Cell {
       }
     })
     |> random.random_sample
-  Cell(pos: pos, neighbors: create_neighbors(pos, max_size), life: life_state)
+  Cell(pos: pos, neighbors: create_neighbors(pos, width), life: life_state)
 }
 
 pub fn generate_universe(width: Int) -> Universe {
   let max_size = width * width
   let embed_size_new_cell_fn = function.curry2(new_cell)
   let board_range = list.range(0, max_size - 1)
-  let cell_range = list.map(board_range, embed_size_new_cell_fn(max_size))
+  let cell_range = list.map(board_range, embed_size_new_cell_fn(width))
   let board = dict.from_list(list.zip(board_range, cell_range))
   Universe(board: board, width: width)
 }
@@ -262,16 +305,18 @@ fn tail_rec_alive_dead_counts(
   dead: Int,
 ) -> #(Int, Int) {
   case n {
-    [] -> #(0, 0)
-    [Cell(_, _, l), ..rest] ->
+    [] -> #(alive, dead)
+    [Cell(p, _, l), ..rest] ->
       case l {
         Alive -> {
-          let alive = alive + 1
-          tail_rec_alive_dead_counts(rest, alive, dead)
+          io.debug(p)
+          let update_alive = alive + 1
+          tail_rec_alive_dead_counts(rest, update_alive, dead)
         }
         Dead -> {
-          let dead = dead + 1
-          tail_rec_alive_dead_counts(rest, alive, dead)
+          io.debug(p)
+          let update_dead = dead + 1
+          tail_rec_alive_dead_counts(rest, alive, update_dead)
         }
       }
     _ -> #(0, 0)
@@ -280,12 +325,15 @@ fn tail_rec_alive_dead_counts(
 
 fn alive_dead_counts(neighbors: List(Cell)) -> AliveDeadCounts {
   let #(alive, dead) = tail_rec_alive_dead_counts(neighbors, 0, 0)
+  io.println("")
   AliveDeadCounts(alive, dead)
 }
 
 pub fn update_cell(u: Universe, cell: Cell) -> Cell {
   let assert Ok(cell) = valid(cell)
   let assert Ok(n) = get_neighbors(cell, u)
+  io.debug("Here is the cell: ")
+  io.debug(cell)
   let life = case get_life_state_from_cell(cell) {
     Alive -> {
       let counts = alive_dead_counts(n)
@@ -296,6 +344,7 @@ pub fn update_cell(u: Universe, cell: Cell) -> Cell {
     }
     Dead -> {
       let counts = alive_dead_counts(n)
+      io.debug(counts)
       case counts.alive == 3 {
         True -> Alive
         False -> Dead
@@ -303,12 +352,12 @@ pub fn update_cell(u: Universe, cell: Cell) -> Cell {
     }
   }
   let c = Cell(get_pos(cell), to_int_neighbors(cell), life)
-  io.debug(c)
+  // io.debug(c)
   c
 }
 
 pub fn loop(u: Universe, iterations: Int) -> Nil {
-  let start = iterations
+  // let start = iterations
   // io.debug(start)
   case iterations {
     0 -> Nil
@@ -328,8 +377,5 @@ pub fn loop(u: Universe, iterations: Int) -> Nil {
 pub fn main() {
   io.println("Hello from conway_life!")
   let u = generate_universe(4)
-  // print_board(u)
-  // io.println("")
-  // io.print("\n")
   loop(u, 2)
 }
