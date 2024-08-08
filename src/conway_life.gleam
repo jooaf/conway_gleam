@@ -1,10 +1,12 @@
+import colored
 import gleam/dict.{type Dict}
-import gleam/float
+import gleam/erlang/process
+import gleam/string
+
 import gleam/function
 import gleam/int
 import gleam/io
 import gleam/list
-import gleam/set
 import prng/random
 
 pub type Life {
@@ -62,50 +64,49 @@ pub fn new_board(u: Universe, update_cells: List(Cell)) -> Universe {
   Universe(board: new_board, width: width)
 }
 
-fn print_neighbor_rec(cells: List(Cell), width: Int) -> Nil {
-  let print_state_fn = fn(state) {
-    case state {
-      Alive -> "*"
-      _ -> "a"
-    }
-  }
+pub fn map_2d_matrix_with_state(
+  matrix: List(List(a)),
+  map_fn: fn(a, List(List(a))) -> b,
+) -> List(List(b)) {
+  list.map(matrix, fn(row) {
+    list.map(row, fn(value) { map_fn(value, matrix) })
+  })
+}
 
-  case cells {
-    [] -> Nil
-    // [Cell(p, _, l)] -> {
-    //   print_state_fn(l)
-    //   println_fn(p)
-    // }
-    [a, b, c, d] -> {
-      let line = {
-        print_state_fn(get_life_state_from_cell(a))
-        <> print_state_fn(get_life_state_from_cell(b))
-        <> print_state_fn(get_life_state_from_cell(c))
-        <> print_state_fn(get_life_state_from_cell(d))
-      }
-      io.println(line)
-    }
-    [a, b, c, d, ..rest] -> {
-      // print_state_fn(l)
-      // println_fn(p)
+pub fn map_2d_matrix(matrix: List(List(a)), map_fn: fn(a) -> b) -> List(List(b)) {
+  list.map(matrix, fn(row) { list.map(row, map_fn) })
+}
 
-      let line = {
-        print_state_fn(get_life_state_from_cell(a))
-        <> print_state_fn(get_life_state_from_cell(b))
-        <> print_state_fn(get_life_state_from_cell(c))
-        <> print_state_fn(get_life_state_from_cell(d))
-      }
-      io.println(line)
-      print_neighbor_rec(rest, width)
+pub fn list_to_square_matrix(l: List(a), n: Int) -> List(List(a)) {
+  case l {
+    [] -> []
+    _ -> {
+      let row = list.take(l, n)
+      let rest = list.drop(l, n)
+      [row, ..list_to_square_matrix(rest, n)]
     }
-    _ -> Nil
   }
 }
 
 pub fn print_board(u: Universe) -> Nil {
   let neighbors = get_board_cells(u)
   let width = get_width(u)
-  print_neighbor_rec(neighbors, width)
+  let color_state_fn = fn(cell) {
+    case cell {
+      Cell(_, _, state) -> {
+        case state {
+          Alive -> colored.green("*")
+          _ -> colored.red("a")
+        }
+      }
+      InvalidCell -> ""
+    }
+  }
+  let _ =
+    neighbors
+    |> list_to_square_matrix(width)
+    |> map_2d_matrix(color_state_fn)
+    |> list.map(fn(row) { io.println(string.join(row, "")) })
   io.println("")
 }
 
@@ -194,9 +195,6 @@ fn moore_neighborhood(x: Int, y: Int, width: Int) -> List(Int) {
   pot
   |> list.filter(filter_points)
   |> list.map(fn(p) { p.ny * width + p.nx })
-  // let 
-
-  // todo
 }
 
 pub fn create_neighbors(pos: Int, width: Int) -> List(Int) {
@@ -309,12 +307,10 @@ fn tail_rec_alive_dead_counts(
     [Cell(p, _, l), ..rest] ->
       case l {
         Alive -> {
-          io.debug(p)
           let update_alive = alive + 1
           tail_rec_alive_dead_counts(rest, update_alive, dead)
         }
         Dead -> {
-          io.debug(p)
           let update_dead = dead + 1
           tail_rec_alive_dead_counts(rest, alive, update_dead)
         }
@@ -325,15 +321,12 @@ fn tail_rec_alive_dead_counts(
 
 fn alive_dead_counts(neighbors: List(Cell)) -> AliveDeadCounts {
   let #(alive, dead) = tail_rec_alive_dead_counts(neighbors, 0, 0)
-  io.println("")
   AliveDeadCounts(alive, dead)
 }
 
 pub fn update_cell(u: Universe, cell: Cell) -> Cell {
   let assert Ok(cell) = valid(cell)
   let assert Ok(n) = get_neighbors(cell, u)
-  io.debug("Here is the cell: ")
-  io.debug(cell)
   let life = case get_life_state_from_cell(cell) {
     Alive -> {
       let counts = alive_dead_counts(n)
@@ -344,7 +337,6 @@ pub fn update_cell(u: Universe, cell: Cell) -> Cell {
     }
     Dead -> {
       let counts = alive_dead_counts(n)
-      io.debug(counts)
       case counts.alive == 3 {
         True -> Alive
         False -> Dead
@@ -352,27 +344,29 @@ pub fn update_cell(u: Universe, cell: Cell) -> Cell {
     }
   }
   let c = Cell(get_pos(cell), to_int_neighbors(cell), life)
-  // io.debug(c)
   c
 }
 
 pub fn loop(u: Universe, iterations: Int) -> Nil {
-  // let start = iterations
-  // io.debug(start)
   case iterations {
     0 -> Nil
     i -> {
       print_board(u)
       let uni_update = function.curry2(update_cell)
-
-      // io.debug(get_board_cells(u))
       let cells = get_board_cells(u) |> list.map(fn(a) { uni_update(u)(a) })
       let u = new_board(u, cells)
-      // print_board(u)
+      process.sleep(10)
       loop(u, i - 1)
     }
   }
 }
+
+/// Used to clear the terminal
+@external(erlang, "io", "format")
+pub fn format(s: String) -> Nil
+
+@external(erlang, "System", "cmd")
+pub fn cmd(s: String, args: List(String)) -> Nil
 
 pub fn main() {
   io.println("Hello from conway_life!")
