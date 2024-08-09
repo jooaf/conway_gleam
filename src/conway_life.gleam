@@ -1,6 +1,7 @@
 import colored
 import gleam/dict.{type Dict}
 import gleam/erlang/process
+import gleam/result
 import gleam/string
 
 import gleam/function
@@ -89,14 +90,16 @@ pub fn list_to_square_matrix(l: List(a), n: Int) -> List(List(a)) {
 }
 
 pub fn print_board(u: Universe) -> Nil {
+  // TODO: put in string repeat to make universe bigger
   let neighbors = get_board_cells(u)
   let width = get_width(u)
   let color_state_fn = fn(cell) {
     case cell {
       Cell(_, _, state) -> {
         case state {
-          Alive -> colored.green("*")
-          _ -> colored.red("a")
+          Alive -> colored.red("████")
+          _ -> colored.green("____")
+          // _ -> ""
         }
       }
       InvalidCell -> ""
@@ -304,7 +307,7 @@ fn tail_rec_alive_dead_counts(
 ) -> #(Int, Int) {
   case n {
     [] -> #(alive, dead)
-    [Cell(p, _, l), ..rest] ->
+    [Cell(_, _, l), ..rest] ->
       case l {
         Alive -> {
           let update_alive = alive + 1
@@ -347,7 +350,7 @@ pub fn update_cell(u: Universe, cell: Cell) -> Cell {
   c
 }
 
-pub fn loop(u: Universe, iterations: Int) -> Nil {
+pub fn loop(u: Universe, iterations: Int, fps: Int) -> Nil {
   case iterations {
     0 -> Nil
     i -> {
@@ -355,21 +358,39 @@ pub fn loop(u: Universe, iterations: Int) -> Nil {
       let uni_update = function.curry2(update_cell)
       let cells = get_board_cells(u) |> list.map(fn(a) { uni_update(u)(a) })
       let u = new_board(u, cells)
+      process.sleep(fps)
+
+      clear_output()
       process.sleep(10)
-      loop(u, i - 1)
+      loop(u, i - 1, fps)
     }
   }
 }
 
-/// Used to clear the terminal
-@external(erlang, "io", "format")
-pub fn format(s: String) -> Nil
+@external(erlang, "Elixir.ShellUtils", "run_command")
+pub fn run_command(
+  command: String,
+  args: List(String),
+) -> Result(String, #(Int, String))
 
-@external(erlang, "System", "cmd")
-pub fn cmd(s: String, args: List(String)) -> Nil
+pub fn execute(command: String, args: List(String)) -> Result(String, String) {
+  run_command(command, args)
+  |> result.map_error(fn(stat) {
+    "Command failed with status " <> int.to_string(stat.0) <> ": " <> stat.1
+  })
+}
+
+pub fn clear_output() -> Nil {
+  // io.debug(execute("nu", ["-c", "clear"]) |> result.unwrap(""))
+  // for speed purposes i will run the string output that is generated
+  // from running the clear shell command via elixir 
+  io.print("\u{001B}[2J\u{001B}[1;1H")
+  Nil
+}
 
 pub fn main() {
+  let fps = 400
   io.println("Hello from conway_life!")
-  let u = generate_universe(4)
-  loop(u, 2)
+  let u = generate_universe(40)
+  loop(u, 400, fps)
 }
