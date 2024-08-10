@@ -2,25 +2,18 @@
 My first project in Gleam :) ! This is my attempt of writing 
 Conway's Game of Life in Gleam.
 
-[![Package Version](https://img.shields.io/hexpm/v/conway_life)](https://hex.pm/packages/conway_life)
-[![Hex Docs](https://img.shields.io/badge/hex-docs-ffaff3)](https://hexdocs.pm/conway_life/)
-
+## CLI 
 ```sh
-gleam add conway_life@1
+Welcome to Conway's Game of Life!
+
+USAGE:
+    conway_life [ ARGS ] [ --board_size=<INT> --cell_size=<INT> --n_iter=<INT> ]
+
+FLAGS:
+    --board_size=<INT>    n x n size of the board
+    --cell_size=<INT>     Size of the cell
+    --help                Print help information
+    --n_iter=<INT>        Number of iterations to run the simulation  
 ```
-```gleam
-import conway_life
 
-pub fn main() {
-  // TODO: An example of the project in use
-}
-```
 
-Further documentation can be found at <https://hexdocs.pm/conway_life>.
-
-## Development
-
-```sh
-gleam run   # Run the project
-gleam test  # Run the tests
-```
