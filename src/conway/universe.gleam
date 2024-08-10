@@ -10,18 +10,24 @@ import gleam/string
 
 import colored
 
+/// The Universe is where each cell will live.
+/// The board field is a dict wrapper where the key is a position of a cell
+/// and the value is the Cell type.
 pub type Universe {
   Universe(board: Dict(Int, Cell), width: Int)
 }
 
+/// Given a Universe, return its board.
 pub fn get_board(u: Universe) -> Dict(Int, Cell) {
   u.board
 }
 
+/// Given a Universe, return the width of the board.
 pub fn get_width(u: Universe) -> Int {
   u.width
 }
 
+/// Given a Universe, return all of the positions.
 pub fn get_board_pos(u: Universe) -> List(Int) {
   u
   |> get_board
@@ -29,6 +35,7 @@ pub fn get_board_pos(u: Universe) -> List(Int) {
   |> list.map(fn(a) { a.0 })
 }
 
+/// Given a Universe, return all cells.
 pub fn get_board_cells(u: Universe) -> List(Cell) {
   u
   |> get_board
@@ -36,6 +43,7 @@ pub fn get_board_cells(u: Universe) -> List(Cell) {
   |> list.map(fn(a) { a.1 })
 }
 
+/// Create a universe based on the width specified by the user
 pub fn generate_universe(width: Int) -> Universe {
   let max_size = width * width
   let embed_size_new_cell_fn = function.curry2(cell.new_cell)
@@ -45,6 +53,8 @@ pub fn generate_universe(width: Int) -> Universe {
   Universe(board: board, width: width)
 }
 
+/// Create a new universe based on a list of updated cells. 
+/// This function is used to generate a new Universe state.
 pub fn new_board(u: Universe, update_cells: List(Cell)) -> Universe {
   let pos_list = dict.keys(u.board)
   let pos_cells_list = list.zip(pos_list, update_cells)
@@ -53,6 +63,7 @@ pub fn new_board(u: Universe, update_cells: List(Cell)) -> Universe {
   Universe(board: new_board, width: width)
 }
 
+/// Print the current state of the Universe.
 pub fn print_board(u: Universe, cell_size: Int) -> Nil {
   let neighbors = get_board_cells(u)
   let width = get_width(u)
@@ -96,6 +107,7 @@ fn get_neighbors_rec(n: List(Result(Cell, Nil))) -> List(Cell) {
   }
 }
 
+/// Given a Cell, find its' neighbors via the Universe's board.
 pub fn get_neighbors(
   cell: Cell,
   universe: Universe,
@@ -119,6 +131,11 @@ pub fn get_neighbors(
   }
 }
 
+/// Update a cell's living or dead state based on these rules: 
+/// 1. Any live cell with fewer than two live neighbours dies, as if caused by underpopulation.
+/// 2. Any live cell with two or three live neighbours lives on to the next generation.
+/// 3. Any live cell with more than three live neighbours dies, as if by overpopulation.
+/// 4. Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
 pub fn update_cell(u: Universe, cell: Cell) -> Cell {
   let assert Ok(cell) = cell.valid(cell)
   let assert Ok(n) = get_neighbors(cell, u)
