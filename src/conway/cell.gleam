@@ -3,27 +3,35 @@ import gleam/function
 import gleam/list
 import prng/random
 
+/// This represents if the current Cell is alive or Dead
 pub type Life {
   Alive
   Dead
 }
 
+/// Custom Type that contains the alive and dead counts of a cell's neighbors.
 pub type AliveDeadCounts {
   AliveDeadCounts(alive: Int, dead: Int)
 }
 
+/// A single cell. A cell can either be either be a Cell or an InvalidCell.
+/// A Cell contains its' poistion on the board, the positions of its' neighbors, and its' life state.
 pub type Cell {
   Cell(pos: Int, neighbors: List(Int), life: Life)
   InvalidCell
 }
 
+/// Wrapper type for an Int pair.
 pub type Coordinate =
   #(Int, Int)
 
+/// Helper type that is used to store coordinate for a Moore's Neighborhood.
+/// For more information, please look at this wiki: https://en.wikipedia.org/wiki/Moore_neighborhood .
 pub type PotentialNeighborPoint {
   PotentialNeighborPoint(dx: Int, dy: Int, nx: Int, ny: Int)
 }
 
+/// Get a Cell's position on the board.
 pub fn get_pos(cell: Cell) -> Int {
   // if suddenly an invalid state occurs 
   case cell {
@@ -33,6 +41,7 @@ pub fn get_pos(cell: Cell) -> Int {
   }
 }
 
+/// Get a cell's neighbors.
 pub fn to_int_neighbors(cell: Cell) -> List(Int) {
   // if suddenly an invalid state occurs 
   case cell {
@@ -42,6 +51,7 @@ pub fn to_int_neighbors(cell: Cell) -> List(Int) {
   }
 }
 
+/// Check if a cell is a Cell and is not an InvalidCell.
 pub fn valid(cell: Cell) -> Result(Cell, Nil) {
   case cell {
     Cell(p, n, l) -> Ok(Cell(p, n, l))
@@ -71,11 +81,13 @@ fn tail_rec_alive_dead_counts(
   }
 }
 
+/// Given a Cell's neighbors, calculate the number of neighboring cells that are alive or dead.
 pub fn alive_dead_counts(neighbors: List(Cell)) -> AliveDeadCounts {
   let #(alive, dead) = tail_rec_alive_dead_counts(neighbors, 0, 0)
   AliveDeadCounts(alive, dead)
 }
 
+/// Get a cell's current life state.
 pub fn get_life_state_from_cell(cell: Cell) -> Life {
   case cell {
     Cell(_, _, l) -> l
@@ -145,6 +157,8 @@ fn moore_neighborhood(x: Int, y: Int, width: Int) -> List(Int) {
   |> list.map(fn(p) { p.ny * width + p.nx })
 }
 
+/// Create a new cell by identifying its' neighbors by position
+/// as well as randomly setting its Life state.
 pub fn new_cell(width: Int, pos: Int) -> Cell {
   let life_state =
     random.int(0, 1)

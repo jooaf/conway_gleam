@@ -25,6 +25,8 @@ pub fn execute(command: String, args: List(String)) -> Result(String, String) {
 }
 
 pub fn clear_output() -> Nil {
+  // note i am using nushell here. if you find that there are issues
+  // please uncomment the io.print command above Nil
   io.print(execute("nu", ["-c", "clear"]) |> result.unwrap(""))
   // for speed purposes i will run the string output that is generated
   // from running the clear shell command via elixir 
