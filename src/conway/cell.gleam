@@ -15,7 +15,7 @@ pub type AliveDeadCounts {
 }
 
 /// A single cell. A cell can either be either be a Cell or an InvalidCell.
-/// A Cell contains its' poistion on the board, the positions of its' neighbors, and its' life state.
+/// A Cell contains its' position on the board, the positions of its' neighbors, and its' life state.
 pub type Cell {
   Cell(pos: Int, neighbors: List(Int), life: Life)
   InvalidCell
@@ -25,28 +25,29 @@ pub type Cell {
 pub type Coordinate =
   #(Int, Int)
 
-/// Helper type that is used to store coordinate for a Moore's Neighborhood.
-/// For more information, please look at this wiki: https://en.wikipedia.org/wiki/Moore_neighborhood .
-pub type PotentialNeighborPoint {
-  PotentialNeighborPoint(dx: Int, dy: Int, nx: Int, ny: Int)
-}
-
 /// Get a Cell's position on the board.
 pub fn get_pos(cell: Cell) -> Int {
-  // if suddenly an invalid state occurs 
   case cell {
     Cell(p, _, _) -> p
-    // TODO: fix negative case, hack
+    // Return -1 for invalid cells
     _ -> -1
+  }
+}
+
+/// Get a Cell's neighbors on the board.
+pub fn get_neighbors(cell: Cell) -> List(Int) {
+  case cell {
+    Cell(_, n, _) -> n
+    // Return -1 for invalid cells
+    _ -> []
   }
 }
 
 /// Get a cell's neighbors.
 pub fn to_int_neighbors(cell: Cell) -> List(Int) {
-  // if suddenly an invalid state occurs 
   case cell {
     Cell(_, n, _) -> n
-    // TODO: fix negative case, hack
+    // Return empty list for invalid cells
     _ -> []
   }
 }
@@ -59,32 +60,28 @@ pub fn valid(cell: Cell) -> Result(Cell, Nil) {
   }
 }
 
-fn tail_rec_alive_dead_counts(
-  n: List(Cell),
-  alive: Int,
-  dead: Int,
-) -> #(Int, Int) {
-  case n {
-    [] -> #(alive, dead)
-    [Cell(_, _, l), ..rest] ->
-      case l {
-        Alive -> {
-          let update_alive = alive + 1
-          tail_rec_alive_dead_counts(rest, update_alive, dead)
-        }
-        Dead -> {
-          let update_dead = dead + 1
-          tail_rec_alive_dead_counts(rest, alive, update_dead)
-        }
-      }
-    _ -> #(0, 0)
-  }
-}
-
-/// Given a Cell's neighbors, calculate the number of neighboring cells that are alive or dead.
+/// Optimized function to count alive and dead neighbors
+/// This is a performance-critical function, so we use a more efficient tail-recursive approach
 pub fn alive_dead_counts(neighbors: List(Cell)) -> AliveDeadCounts {
   let #(alive, dead) = tail_rec_alive_dead_counts(neighbors, 0, 0)
   AliveDeadCounts(alive, dead)
+}
+
+fn tail_rec_alive_dead_counts(
+  neighbors: List(Cell),
+  alive_acc: Int,
+  dead_acc: Int,
+) -> #(Int, Int) {
+  case neighbors {
+    [] -> #(alive_acc, dead_acc)
+    [Cell(_, _, life), ..rest] ->
+      case life {
+        Alive -> tail_rec_alive_dead_counts(rest, alive_acc + 1, dead_acc)
+        Dead -> tail_rec_alive_dead_counts(rest, alive_acc, dead_acc + 1)
+      }
+    [InvalidCell, ..rest] ->
+      tail_rec_alive_dead_counts(rest, alive_acc, dead_acc)
+  }
 }
 
 /// Get a cell's current life state.
@@ -93,68 +90,6 @@ pub fn get_life_state_from_cell(cell: Cell) -> Life {
     Cell(_, _, l) -> l
     InvalidCell -> Dead
   }
-}
-
-fn filter_invalid_more_neighboorhood(
-  width: Int,
-  potential: PotentialNeighborPoint,
-) -> Bool {
-  case potential {
-    PotentialNeighborPoint(dx, dy, nx, ny)
-      if { dx != 0 || dy != 0 }
-      && 0 <= nx
-      && nx <= width
-      && 0 <= ny
-      && ny <= width
-    -> True
-    _ -> False
-  }
-}
-
-fn nx_ny_creation(x: Int, y: Int, pos: List(Coordinate)) -> List(Coordinate) {
-  case pos {
-    [] -> []
-    [p, ..rest] -> [#(x + p.0, y + p.1), ..nx_ny_creation(x, y, rest)]
-  }
-}
-
-fn create_potential_points_rec(
-  zip_coor_list: List(#(Coordinate, Coordinate)),
-) -> List(PotentialNeighborPoint) {
-  case zip_coor_list {
-    [] -> []
-    [#(d, n), ..rest] -> [
-      PotentialNeighborPoint(d.0, d.1, n.0, n.1),
-      ..create_potential_points_rec(rest)
-    ]
-  }
-}
-
-fn create_potential_points(
-  derivations: List(Coordinate),
-  n: List(Coordinate),
-) -> List(PotentialNeighborPoint) {
-  let assert True = list.length(derivations) == list.length(n)
-
-  let zip_coor_list = list.zip(derivations, n)
-  create_potential_points_rec(zip_coor_list)
-}
-
-fn moore_neighborhood(x: Int, y: Int, width: Int) -> List(Int) {
-  let n_pos = [-1, 0, 1]
-  let cross_n = function.curry2(utils.build_product_fn)(n_pos)
-
-  let n_pos_cross =
-    n_pos
-    |> list.map(fn(x) { cross_n(x) })
-    |> list.flatten
-
-  let nx_ny_list = nx_ny_creation(x, y, n_pos_cross)
-  let pot = create_potential_points(n_pos_cross, nx_ny_list)
-  let filter_points = function.curry2(filter_invalid_more_neighboorhood)(width)
-  pot
-  |> list.filter(filter_points)
-  |> list.map(fn(p) { p.ny * width + p.nx })
 }
 
 /// Create a new cell by identifying its' neighbors by position
@@ -173,21 +108,63 @@ pub fn new_cell(width: Int, pos: Int) -> Cell {
   Cell(pos: pos, neighbors: create_neighbors(pos, width), life: life_state)
 }
 
-fn remove_invalid_neighbors(
-  n neighbors: List(Int),
-  p pos: Int,
-  max max_size: Int,
-) -> List(Int) {
-  // filter any negatives or values that exceed the universe boundary
-  list.filter(neighbors, fn(cell_pos) {
-    cell_pos >= 0 && cell_pos <= max_size - 1 && cell_pos != pos
-  })
+/// Create a new cell with a specified life state
+pub fn new_cell_with_state(width: Int, pos: Int, state: Life) -> Cell {
+  Cell(pos: pos, neighbors: create_neighbors(pos, width), life: state)
 }
 
+/// An optimized version of creating neighbors that directly computes the Moore neighborhood
+/// without creating intermediate data structures
 fn create_neighbors(pos: Int, width: Int) -> List(Int) {
   let x = pos % width
   let y = pos / width
-  let final_list = moore_neighborhood(x, y, width)
 
-  remove_invalid_neighbors(n: final_list, p: pos, max: width * width)
+  // Relative positions of neighbors in Moore neighborhood
+  let neighbor_offsets = [
+    #(-1, -1),
+    #(0, -1),
+    #(1, -1),
+    #(-1, 0),
+    #(1, 0),
+    #(-1, 1),
+    #(0, 1),
+    #(1, 1),
+  ]
+
+  // Map offsets to absolute positions and filter out invalid ones
+  neighbor_offsets
+  |> list.filter_map(fn(offset) {
+    let #(dx, dy) = offset
+    let nx = x + dx
+    let ny = y + dy
+
+    // Check if neighbor is within bounds
+    case nx >= 0 && nx < width && ny >= 0 && ny < width {
+      True -> Ok(ny * width + nx)
+      False -> Error(Nil)
+    }
+  })
+}
+
+/// Create a deep copy of a cell with a new life state
+pub fn with_new_life_state(cell: Cell, new_state: Life) -> Cell {
+  case cell {
+    Cell(p, n, _) -> Cell(p, n, new_state)
+    InvalidCell -> InvalidCell
+  }
+}
+
+/// Calculate the next state of a cell based on its neighbors' states
+/// This is a specialized version of the Conway's Game of Life rules
+pub fn calculate_next_state(current_state: Life, alive_neighbors: Int) -> Life {
+  case current_state, alive_neighbors {
+    // A living cell with 2 or 3 living neighbors survives
+    Alive, 2 | Alive, 3 -> Alive
+
+    // A dead cell with exactly 3 living neighbors becomes alive
+    Dead, 3 -> Alive
+
+    // All other cells die or remain dead
+    _, _ -> Dead
+  }
 }

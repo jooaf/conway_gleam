@@ -63,27 +63,59 @@ pub fn new_board(u: Universe, update_cells: List(Cell)) -> Universe {
   Universe(board: new_board, width: width)
 }
 
-/// Print the current state of the Universe.
+/// Print the current state of the Universe with improved visuals.
 pub fn print_board(u: Universe, cell_size: Int) -> Nil {
   let neighbors = get_board_cells(u)
   let width = get_width(u)
+
+  // Print top border
+  io.println(string.repeat("+", width * cell_size + 2))
+
   let color_state_fn = fn(cell) {
     case cell {
       Cell(_, _, state) -> {
         case state {
-          Alive -> colored.red(string.repeat("█", cell_size))
-          _ -> colored.green(string.repeat("_", cell_size))
+          Alive -> colored.green(string.repeat("█", cell_size))
+          _ -> colored.red(string.repeat("·", cell_size))
         }
       }
       InvalidCell -> ""
     }
   }
-  let _ =
+
+  let matrix =
     neighbors
     |> utils.list_to_square_matrix(width)
     |> utils.map_2d_matrix(color_state_fn)
-    |> list.map(fn(row) { io.println(string.join(row, "")) })
-  io.println("")
+
+  // Print each row with border
+  matrix
+  |> list.map(fn(row) {
+    io.println(string.concat(["|", string.join(row, ""), "|"]))
+  })
+
+  // Print bottom border
+  io.println(string.repeat("+", width * cell_size + 2))
+
+  // Print generation statistics
+  let living_count =
+    neighbors
+    |> list.filter(fn(c) {
+      case c {
+        Cell(_, _, Alive) -> True
+        _ -> False
+      }
+    })
+    |> list.length
+
+  io.println(
+    string.concat([
+      "Population: ",
+      colored.green(int.to_string(living_count)),
+      " / ",
+      int.to_string(width * width),
+    ]),
+  )
 }
 
 fn get_neighbors_rec(n: List(Result(Cell, Nil))) -> List(Cell) {
@@ -131,11 +163,7 @@ pub fn get_neighbors(
   }
 }
 
-/// Update a cell's living or dead state based on these rules: 
-/// 1. Any live cell with fewer than two live neighbours dies, as if caused by underpopulation.
-/// 2. Any live cell with two or three live neighbours lives on to the next generation.
-/// 3. Any live cell with more than three live neighbours dies, as if by overpopulation.
-/// 4. Any dead cell with exactly three live neighbours becomes a live cell, as if by reproduction.
+/// Update a cell's living or dead state based on the rules of Conway's Game of Life
 pub fn update_cell(u: Universe, cell: Cell) -> Cell {
   let assert Ok(cell) = cell.valid(cell)
   let assert Ok(n) = get_neighbors(cell, u)
@@ -157,4 +185,30 @@ pub fn update_cell(u: Universe, cell: Cell) -> Cell {
   }
   let c = Cell(cell.get_pos(cell), cell.to_int_neighbors(cell), life)
   c
+}
+
+/// Count the number of living cells in the universe
+pub fn count_living_cells(u: Universe) -> Int {
+  u
+  |> get_board_cells
+  |> list.filter(fn(c) {
+    case c {
+      Cell(_, _, Alive) -> True
+      _ -> False
+    }
+  })
+  |> list.length
+}
+
+/// Check if the universe has reached a stable state (no changes between generations)
+pub fn is_stable(current: Universe, next: Universe) -> Bool {
+  let current_cells = get_board_cells(current)
+  let next_cells = get_board_cells(next)
+
+  list.zip(current_cells, next_cells)
+  |> list.all(fn(pair) {
+    let #(current_cell, next_cell) = pair
+    cell.get_life_state_from_cell(current_cell)
+    == cell.get_life_state_from_cell(next_cell)
+  })
 }
